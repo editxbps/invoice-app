@@ -433,6 +433,15 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         New Invoice
       </div>
+      <div class="nav-item" onclick="exportData()" title="Download a backup file of all your invoices">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+        Export / Backup
+      </div>
+      <div class="nav-item" onclick="importData()" title="Restore invoices from a backup file">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>
+        Import / Restore
+      </div>
+      <input type="file" id="import-file" accept="application/json,.json" style="display:none" onchange="handleImportFile(this)">
     </nav>
     <div class="sidebar-footer">© 2026 Apes Studio. All rights reserved.</div>
   </aside>
@@ -809,6 +818,57 @@ function getInvoices() {
 }
 function saveInvoices(arr) {
   localStorage.setItem(STORE_KEY, JSON.stringify(arr));
+}
+
+/* ── Backup: export / import invoices as a JSON file ── */
+function exportData() {
+  const invoices = getInvoices();
+  if (invoices.length === 0) {
+    alert('There are no invoices on this address to back up yet.');
+    return;
+  }
+  const data = JSON.stringify(invoices, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const stamp = new Date().toISOString().slice(0, 10);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'apes-invoices-backup-' + stamp + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function importData() {
+  document.getElementById('import-file').click();
+}
+
+function handleImportFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    try {
+      const arr = JSON.parse(e.target.result);
+      if (!Array.isArray(arr)) throw new Error('File does not contain an invoice list.');
+      const existing = getInvoices();
+      if (existing.length > 0) {
+        const ok = confirm(
+          'This will REPLACE the ' + existing.length + ' invoice(s) currently on this address ' +
+          'with the ' + arr.length + ' invoice(s) from the backup file.\n\nContinue?'
+        );
+        if (!ok) { input.value = ''; return; }
+      }
+      saveInvoices(arr);
+      alert('Imported ' + arr.length + ' invoice(s) successfully.');
+      location.reload();
+    } catch (err) {
+      alert('Could not import this file — it is not a valid Apes invoices backup.\n\n(' + err.message + ')');
+    }
+    input.value = '';
+  };
+  reader.readAsText(file);
 }
 function nextInvoiceNumber() {
   const invoices = getInvoices();
