@@ -412,10 +412,52 @@
       min-height: auto;
     }
   }
+
+  /* ── Passcode lock screen ── */
+  #lock-screen {
+    position: fixed; inset: 0; z-index: 9999;
+    display: none; align-items: center; justify-content: center;
+    background: var(--red);
+    font-family: 'Arial', sans-serif;
+  }
+  .lock-card {
+    background: var(--cream); border-radius: 14px; padding: 40px 34px;
+    width: 360px; max-width: 90vw; text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+  }
+  .lock-brand {
+    font-family: 'League Spartan', sans-serif; font-weight: 900;
+    letter-spacing: 3px; color: var(--red); font-size: 24px; margin-bottom: 18px;
+  }
+  .lock-card h2 { font-size: 19px; color: #1a1a1a; margin-bottom: 6px; }
+  .lock-card p { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5; }
+  .lock-field {
+    width: 100%; padding: 12px 14px; font-size: 15px;
+    border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px;
+    background: #fff; outline: none;
+  }
+  .lock-field:focus { border-color: var(--red); }
+  .lock-error { color: var(--red); font-size: 13px; min-height: 18px; margin-bottom: 8px; }
+  .lock-submit { width: 100%; justify-content: center; padding: 12px; font-size: 15px; }
+  .lock-note { font-size: 11px; color: var(--text-muted); margin-top: 18px; line-height: 1.6; }
 </style>
 </head>
 <body>
-<div id="app">
+<div id="lock-screen">
+  <div class="lock-card">
+    <div class="lock-brand">APES STUDIO</div>
+    <h2 id="lock-title">Enter your passcode</h2>
+    <p id="lock-sub">This app is locked.</p>
+    <input id="lock-input" type="password" class="lock-field" placeholder="Passcode" autocomplete="off" inputmode="text">
+    <div id="lock-confirm-wrap" style="display:none">
+      <input id="lock-confirm" type="password" class="lock-field" placeholder="Confirm passcode" autocomplete="off">
+    </div>
+    <div id="lock-error" class="lock-error"></div>
+    <button id="lock-btn" class="btn btn-primary lock-submit" onclick="submitLock()">Unlock</button>
+    <div class="lock-note">🔒 Your passcode is hashed and stored only on this device. This is a basic lock to keep casual eyes out — not bank-grade security.</div>
+  </div>
+</div>
+<div id="app" style="display:none">
 
   <!-- ── Sidebar ── -->
   <aside id="sidebar">
@@ -440,6 +482,10 @@
       <div class="nav-item" onclick="importData()" title="Restore invoices from a backup file">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>
         Import / Restore
+      </div>
+      <div class="nav-item" onclick="lockApp()" title="Lock the app now">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Lock
       </div>
       <input type="file" id="import-file" accept="application/json,.json" style="display:none" onchange="handleImportFile(this)">
     </nav>
@@ -1398,10 +1444,87 @@ function esc(s) {
 }
 
 /* ══════════════════════════════════════════
+   PASSCODE LOCK (device-local, JS-only)
+══════════════════════════════════════════ */
+const PASS_KEY = 'apes_passcode';
+
+function randomHex(n) {
+  const a = new Uint8Array(n); crypto.getRandomValues(a);
+  return [...a].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function pbkdf2Hex(passcode, saltHex, iterations) {
+  const enc = new TextEncoder();
+  const salt = Uint8Array.from(saltHex.match(/.{2}/g).map(b => parseInt(b, 16)));
+  const km = await crypto.subtle.importKey('raw', enc.encode(passcode), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, km, 256);
+  return [...new Uint8Array(bits)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function getPasscodeRecord() {
+  try { return JSON.parse(localStorage.getItem(PASS_KEY) || 'null'); } catch { return null; }
+}
+
+function showLock() {
+  const setup = !getPasscodeRecord();
+  document.getElementById('lock-title').textContent = setup ? 'Create your passcode' : 'Welcome back';
+  document.getElementById('lock-sub').textContent = setup
+    ? 'Set a passcode to protect your invoices on this device.'
+    : 'This app is locked. Enter your passcode to continue.';
+  document.getElementById('lock-confirm-wrap').style.display = setup ? 'block' : 'none';
+  document.getElementById('lock-btn').textContent = setup ? 'Set passcode & enter' : 'Unlock';
+  document.getElementById('lock-error').textContent = '';
+  document.getElementById('lock-input').value = '';
+  document.getElementById('lock-confirm').value = '';
+  document.getElementById('lock-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  setTimeout(() => document.getElementById('lock-input').focus(), 50);
+}
+
+async function submitLock() {
+  const rec = getPasscodeRecord();
+  const pass = document.getElementById('lock-input').value;
+  const err = document.getElementById('lock-error');
+  if (!pass) { err.textContent = 'Please enter a passcode.'; return; }
+  if (!rec) {
+    const confirmVal = document.getElementById('lock-confirm').value;
+    if (pass.length < 4) { err.textContent = 'Use at least 4 characters.'; return; }
+    if (pass !== confirmVal) { err.textContent = 'The two passcodes do not match.'; return; }
+    const salt = randomHex(16);
+    const iterations = 150000;
+    const hash = await pbkdf2Hex(pass, salt, iterations);
+    localStorage.setItem(PASS_KEY, JSON.stringify({ salt, iterations, hash }));
+    unlockApp();
+  } else {
+    const hash = await pbkdf2Hex(pass, rec.salt, rec.iterations);
+    if (hash === rec.hash) { unlockApp(); }
+    else { err.textContent = 'Wrong passcode. Try again.'; document.getElementById('lock-input').select(); }
+  }
+}
+
+function unlockApp() {
+  sessionStorage.setItem('apes_unlocked', '1');
+  document.getElementById('lock-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  renderStats();
+  renderTable();
+}
+
+function lockApp() {
+  sessionStorage.removeItem('apes_unlocked');
+  showLock();
+}
+
+['lock-input', 'lock-confirm'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') submitLock(); });
+});
+
+/* ══════════════════════════════════════════
    INIT
 ══════════════════════════════════════════ */
-renderStats();
-renderTable();
+if (sessionStorage.getItem('apes_unlocked') === '1') {
+  unlockApp();
+} else {
+  showLock();
+}
 </script>
 </body>
 </html>
