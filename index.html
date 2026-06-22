@@ -715,6 +715,28 @@
             <div id="profit-breakdown"></div>
           </div>
         </div>
+
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <span class="card-title">Monthly Profit</span>
+          </div>
+          <div class="card-body">
+            <table class="inv-table">
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th>Income</th>
+                  <th>Expenses</th>
+                  <th>Profit</th>
+                </tr>
+              </thead>
+              <tbody id="monthly-tbody"></tbody>
+            </table>
+            <div id="monthly-empty" class="empty-state" style="display:none;">
+              <p>No monthly data yet. Mark invoices paid or add expenses to see your monthly profit.</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ══ FORM ══ -->
@@ -1455,6 +1477,38 @@ function renderProfit() {
         <span style="color:var(--unpaid);font-weight:600;font-size:12px;">${formatCurrency(outstanding)}</span>
       </div>
     </div>`;
+
+  // ── Month-wise breakdown ──
+  const monthly = {};
+  invoices.filter(i => i.status === 'paid').forEach(i => {
+    const m = (i.date || '').slice(0, 7);
+    if (!m) return;
+    (monthly[m] = monthly[m] || { income: 0, expenses: 0 }).income += grandTotal(i);
+  });
+  getExpenses().forEach(e => {
+    const m = (e.date || '').slice(0, 7);
+    if (!m) return;
+    (monthly[m] = monthly[m] || { income: 0, expenses: 0 }).expenses += Number(e.amount || 0);
+  });
+  const months = Object.keys(monthly).sort().reverse();
+  const mtbody = document.getElementById('monthly-tbody');
+  const mempty = document.getElementById('monthly-empty');
+  if (months.length === 0) {
+    mtbody.innerHTML = '';
+    mempty.style.display = 'block';
+  } else {
+    mempty.style.display = 'none';
+    mtbody.innerHTML = months.map(m => {
+      const inc = monthly[m].income, exp = monthly[m].expenses, p = inc - exp;
+      const label = new Date(m + '-01T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+      return `<tr>
+        <td class="inv-num" style="color:#1a1a1a;">${label}</td>
+        <td style="color:var(--paid);font-weight:700;">+ ${formatCurrency(inc)}</td>
+        <td style="color:var(--red);font-weight:700;">− ${formatCurrency(exp)}</td>
+        <td class="inv-amount" style="color:${p >= 0 ? 'var(--paid)' : 'var(--red)'};">${formatCurrency(p)}</td>
+      </tr>`;
+    }).join('');
+  }
 }
 
 /* ══════════════════════════════════════════
