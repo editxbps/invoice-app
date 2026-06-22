@@ -254,6 +254,23 @@
   /* ── Form Actions ── */
   .form-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
 
+  /* ── Modal (Add Expense) ── */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 5000;
+    background: rgba(26,26,26,0.55);
+    display: none; align-items: center; justify-content: center;
+  }
+  .modal {
+    background: var(--white); border-radius: 12px; padding: 26px 28px;
+    width: 420px; max-width: 92vw; box-shadow: 0 24px 70px rgba(0,0,0,0.3);
+  }
+  .modal-title {
+    font-size: 16px; font-weight: 900; color: var(--red);
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 18px;
+  }
+  .amount-out { color: var(--red); font-weight: 800; }
+  .cat-badge { background: var(--cream-dark); color: #555; }
+
   /* ═══════════════════════════════════════════════
      INVOICE PREVIEW — matches exact PDF style
   ═══════════════════════════════════════════════ */
@@ -475,6 +492,14 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         New Invoice
       </div>
+      <div class="nav-item" data-view="expenses" onclick="showView('expenses')" title="Money you paid out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        Expenses
+      </div>
+      <div class="nav-item" data-view="profit" onclick="showView('profit')" title="Income minus expenses">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        Profit
+      </div>
       <div class="nav-item" onclick="exportData()" title="Download a backup file of all your invoices">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
         Export / Backup
@@ -566,6 +591,128 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               <p>No invoices yet. Create your first invoice.</p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ EXPENSES ══ -->
+      <div id="view-expenses" class="view">
+        <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+          <div class="stat-card">
+            <div class="stat-label">Total Spent</div>
+            <div class="stat-value" id="stat-exp-total" style="color:var(--red)">₹0</div>
+            <div class="stat-sub">All money out</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">This Month</div>
+            <div class="stat-value" id="stat-exp-month" style="color:var(--unpaid)">₹0</div>
+            <div class="stat-sub" id="stat-exp-month-label">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Entries</div>
+            <div class="stat-value" id="stat-exp-count">0</div>
+            <div class="stat-sub">Payments made</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Expenses — Money Out</span>
+            <div class="topbar-actions">
+              <div class="search-wrap">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="exp-search" placeholder="Search expenses..." oninput="renderExpenses()">
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <table class="inv-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Paid To</th>
+                  <th>Category</th>
+                  <th>Note</th>
+                  <th>Amount</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="exp-tbody"></tbody>
+            </table>
+            <div id="exp-empty" class="empty-state" style="display:none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+              <p>No expenses yet. Click "+ Add Expense" to record money you paid out.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add/Edit Expense Modal -->
+        <div id="expense-modal" class="modal-overlay">
+          <div class="modal">
+            <div class="modal-title" id="expense-modal-title">Add Expense</div>
+            <div class="form-row">
+              <label>Date</label>
+              <input type="date" id="exp-date">
+            </div>
+            <div class="form-row">
+              <label>Paid To</label>
+              <input type="text" id="exp-payee" placeholder="e.g. Video editor, Adobe, Office rent">
+            </div>
+            <div class="form-row">
+              <label>Category</label>
+              <select id="exp-category">
+                <option>Team / Freelancer</option>
+                <option>Software / Tools</option>
+                <option>Office / Rent</option>
+                <option>Marketing / Ads</option>
+                <option>Equipment</option>
+                <option>Travel</option>
+                <option>Taxes / Fees</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Amount (₹)</label>
+              <input type="number" id="exp-amount" min="0" step="0.01" placeholder="0.00">
+            </div>
+            <div class="form-row">
+              <label>Note (optional)</label>
+              <input type="text" id="exp-note" placeholder="What was this payment for?">
+            </div>
+            <div class="form-actions" style="margin-top:18px;">
+              <button class="btn btn-ghost" onclick="closeExpenseModal()">Cancel</button>
+              <button class="btn btn-primary" onclick="saveExpense()">Save Expense</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ PROFIT ══ -->
+      <div id="view-profit" class="view">
+        <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+          <div class="stat-card">
+            <div class="stat-label">Income Received</div>
+            <div class="stat-value" id="stat-income" style="color:var(--paid)">₹0</div>
+            <div class="stat-sub">From paid invoices</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Total Expenses</div>
+            <div class="stat-value" id="stat-spent" style="color:var(--red)">₹0</div>
+            <div class="stat-sub">Money paid out</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Net Profit</div>
+            <div class="stat-value" id="stat-profit">₹0</div>
+            <div class="stat-sub" id="stat-profit-sub">Income − Expenses</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Profit Summary</span>
+          </div>
+          <div class="card-body" style="padding: 22px 24px;">
+            <div id="profit-breakdown"></div>
           </div>
         </div>
       </div>
@@ -866,20 +1013,32 @@ function saveInvoices(arr) {
   localStorage.setItem(STORE_KEY, JSON.stringify(arr));
 }
 
-/* ── Backup: export / import invoices as a JSON file ── */
+/* ── Expenses data layer ── */
+const EXPENSE_KEY = 'apes_expenses';
+function getExpenses() {
+  try { return JSON.parse(localStorage.getItem(EXPENSE_KEY) || '[]'); }
+  catch { return []; }
+}
+function saveExpenses(arr) {
+  localStorage.setItem(EXPENSE_KEY, JSON.stringify(arr));
+}
+
+/* ── Backup: export / import invoices + expenses as a JSON file ── */
 function exportData() {
   const invoices = getInvoices();
-  if (invoices.length === 0) {
-    alert('There are no invoices on this address to back up yet.');
+  const expenses = getExpenses();
+  if (invoices.length === 0 && expenses.length === 0) {
+    alert('There is nothing on this address to back up yet.');
     return;
   }
-  const data = JSON.stringify(invoices, null, 2);
+  const payload = { _type: 'apes-backup', _version: 2, invoices, expenses };
+  const data = JSON.stringify(payload, null, 2);
   const blob = new Blob([data], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const stamp = new Date().toISOString().slice(0, 10);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'apes-invoices-backup-' + stamp + '.json';
+  a.download = 'apes-backup-' + stamp + '.json';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -896,21 +1055,32 @@ function handleImportFile(input) {
   const reader = new FileReader();
   reader.onload = function (e) {
     try {
-      const arr = JSON.parse(e.target.result);
-      if (!Array.isArray(arr)) throw new Error('File does not contain an invoice list.');
-      const existing = getInvoices();
-      if (existing.length > 0) {
+      const parsed = JSON.parse(e.target.result);
+      let invoices, expenses = null;
+      if (Array.isArray(parsed)) {
+        invoices = parsed;                       // old format: bare invoice array
+      } else if (parsed && Array.isArray(parsed.invoices)) {
+        invoices = parsed.invoices;              // new format: { invoices, expenses }
+        if (Array.isArray(parsed.expenses)) expenses = parsed.expenses;
+      } else {
+        throw new Error('File does not contain Apes data.');
+      }
+      const parts = [invoices.length + ' invoice(s)'];
+      if (expenses) parts.push(expenses.length + ' expense(s)');
+      const summary = parts.join(' and ');
+      if (getInvoices().length > 0 || getExpenses().length > 0) {
         const ok = confirm(
-          'This will REPLACE the ' + existing.length + ' invoice(s) currently on this address ' +
-          'with the ' + arr.length + ' invoice(s) from the backup file.\n\nContinue?'
+          'This will REPLACE the data currently on this address with the backup:\n\n' +
+          summary + '\n\nContinue?'
         );
         if (!ok) { input.value = ''; return; }
       }
-      saveInvoices(arr);
-      alert('Imported ' + arr.length + ' invoice(s) successfully.');
+      saveInvoices(invoices);
+      if (expenses) saveExpenses(expenses);
+      alert('Imported ' + summary + ' successfully.');
       location.reload();
     } catch (err) {
-      alert('Could not import this file — it is not a valid Apes invoices backup.\n\n(' + err.message + ')');
+      alert('Could not import this file — it is not a valid Apes backup.\n\n(' + err.message + ')');
     }
     input.value = '';
   };
@@ -1055,7 +1225,7 @@ function showView(name, opts) {
   const ni = document.querySelector(`.nav-item[data-view="${name}"]`);
   if (ni) ni.classList.add('active');
 
-  const titles = { dashboard: 'DASHBOARD', form: editingId ? 'EDIT INVOICE' : 'NEW INVOICE', preview: 'INVOICE PREVIEW' };
+  const titles = { dashboard: 'DASHBOARD', form: editingId ? 'EDIT INVOICE' : 'NEW INVOICE', preview: 'INVOICE PREVIEW', expenses: 'EXPENSES', profit: 'PROFIT' };
   document.getElementById('topbar-title').textContent = titles[name] || '';
 
   const ta = document.getElementById('topbar-actions');
@@ -1063,13 +1233,17 @@ function showView(name, opts) {
     ta.innerHTML = `<button class="btn btn-primary" onclick="newInvoice()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       New Invoice</button>`;
-  } else if (name === 'form') {
-    ta.innerHTML = '';
+  } else if (name === 'expenses') {
+    ta.innerHTML = `<button class="btn btn-primary" onclick="openExpenseModal()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Expense</button>`;
   } else {
     ta.innerHTML = '';
   }
 
   if (name === 'dashboard') { renderStats(); renderTable(); }
+  else if (name === 'expenses') { renderExpenses(); }
+  else if (name === 'profit') { renderProfit(); }
 }
 
 /* ══════════════════════════════════════════
@@ -1148,6 +1322,139 @@ function renderTable() {
       </div></td>
     </tr>`;
   }).join('');
+}
+
+/* ══════════════════════════════════════════
+   EXPENSES  (money out)
+══════════════════════════════════════════ */
+let editingExpenseId = null;
+
+function openExpenseModal(id) {
+  editingExpenseId = id || null;
+  const exp = id ? getExpenses().find(e => e.id === id) : null;
+  document.getElementById('expense-modal-title').textContent = exp ? 'Edit Expense' : 'Add Expense';
+  document.getElementById('exp-date').value = exp?.date || today();
+  document.getElementById('exp-payee').value = exp?.payee || '';
+  document.getElementById('exp-category').value = exp?.category || 'Team / Freelancer';
+  document.getElementById('exp-amount').value = (exp && exp.amount != null) ? exp.amount : '';
+  document.getElementById('exp-note').value = exp?.note || '';
+  document.getElementById('expense-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('exp-payee').focus(), 50);
+}
+
+function closeExpenseModal() {
+  document.getElementById('expense-modal').style.display = 'none';
+  editingExpenseId = null;
+}
+
+function saveExpense() {
+  const payee = document.getElementById('exp-payee').value.trim();
+  const amount = parseFloat(document.getElementById('exp-amount').value);
+  if (!payee) { alert('Please enter who you paid.'); return; }
+  if (!(amount > 0)) { alert('Please enter a valid amount greater than 0.'); return; }
+  const exp = {
+    id: editingExpenseId || uid(),
+    date: document.getElementById('exp-date').value || today(),
+    payee,
+    category: document.getElementById('exp-category').value,
+    note: document.getElementById('exp-note').value.trim(),
+    amount
+  };
+  const arr = getExpenses();
+  if (editingExpenseId) {
+    const i = arr.findIndex(e => e.id === editingExpenseId);
+    if (i >= 0) arr[i] = exp;
+  } else {
+    arr.push(exp);
+  }
+  saveExpenses(arr);
+  closeExpenseModal();
+  renderExpenses();
+}
+
+function deleteExpense(id) {
+  if (!confirm('Delete this expense?')) return;
+  saveExpenses(getExpenses().filter(e => e.id !== id));
+  renderExpenses();
+}
+
+function renderExpenses() {
+  const all = getExpenses();
+  const total = all.reduce((s, e) => s + Number(e.amount || 0), 0);
+  const ym = today().slice(0, 7);
+  const monthTotal = all.filter(e => (e.date || '').slice(0, 7) === ym).reduce((s, e) => s + Number(e.amount || 0), 0);
+  document.getElementById('stat-exp-total').textContent = formatCurrency(total);
+  document.getElementById('stat-exp-count').textContent = all.length;
+  document.getElementById('stat-exp-month').textContent = formatCurrency(monthTotal);
+  document.getElementById('stat-exp-month-label').textContent =
+    new Date(today() + 'T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+  const q = (document.getElementById('exp-search')?.value || '').toLowerCase();
+  const list = all.filter(e =>
+    !q || (e.payee || '').toLowerCase().includes(q) ||
+    (e.category || '').toLowerCase().includes(q) || (e.note || '').toLowerCase().includes(q)
+  ).slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  const tbody = document.getElementById('exp-tbody');
+  const empty = document.getElementById('exp-empty');
+  if (list.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = list.map(e => `<tr>
+    <td>${formatDate(e.date)}</td>
+    <td><div class="inv-client">${esc(e.payee || '—')}</div></td>
+    <td><span class="badge cat-badge">${esc(e.category || '—')}</span></td>
+    <td style="color:var(--text-muted);">${esc(e.note || '—')}</td>
+    <td class="amount-out">− ${formatCurrency(e.amount)}</td>
+    <td><div class="row-actions">
+      <button class="btn btn-sm btn-ghost btn-icon" title="Edit" onclick="openExpenseModal('${e.id}')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </button>
+      <button class="btn btn-sm btn-danger btn-icon" title="Delete" onclick="deleteExpense('${e.id}')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </button>
+    </div></td>
+  </tr>`).join('');
+}
+
+/* ══════════════════════════════════════════
+   PROFIT  (income − expenses)
+══════════════════════════════════════════ */
+function renderProfit() {
+  const invoices = getInvoices();
+  const income = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + grandTotal(i), 0);
+  const outstanding = invoices.filter(i => i.status !== 'paid').reduce((s, i) => s + grandTotal(i), 0);
+  const expenses = getExpenses().reduce((s, e) => s + Number(e.amount || 0), 0);
+  const profit = income - expenses;
+  const profitColor = profit >= 0 ? 'var(--paid)' : 'var(--red)';
+
+  document.getElementById('stat-income').textContent = formatCurrency(income);
+  document.getElementById('stat-spent').textContent = formatCurrency(expenses);
+  const pEl = document.getElementById('stat-profit');
+  pEl.textContent = formatCurrency(profit);
+  pEl.style.color = profitColor;
+  document.getElementById('stat-profit-sub').textContent =
+    profit > 0 ? "You're in profit 🎉" : profit < 0 ? "You're running at a loss" : 'Breaking even';
+
+  document.getElementById('profit-breakdown').innerHTML = `
+    <div class="totals-box" style="width:100%;">
+      <div class="totals-line">
+        <span class="totals-label">Income received (paid invoices)</span>
+        <span style="color:var(--paid);font-weight:700;">+ ${formatCurrency(income)}</span>
+      </div>
+      <div class="totals-line">
+        <span class="totals-label">Total expenses (money out)</span>
+        <span style="color:var(--red);font-weight:700;">− ${formatCurrency(expenses)}</span>
+      </div>
+      <div class="totals-line grand">
+        <span>Net profit</span>
+        <span style="color:${profitColor};">${formatCurrency(profit)}</span>
+      </div>
+      <div class="totals-line" style="margin-top:6px;">
+        <span class="totals-label" style="font-size:11px;">Still to collect (unpaid + overdue invoices)</span>
+        <span style="color:var(--unpaid);font-weight:600;font-size:12px;">${formatCurrency(outstanding)}</span>
+      </div>
+    </div>`;
 }
 
 /* ══════════════════════════════════════════
